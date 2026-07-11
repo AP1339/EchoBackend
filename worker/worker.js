@@ -84,23 +84,28 @@ async function processJob(job) {
     await sleep(500);
 
     // --------------------------------
-    // UPLOAD
-    // --------------------------------
+// UPLOAD
+// --------------------------------
 
-    queue.updateJob(job.id, {
-        stage: "Uploading",
-        progress: 95
-    });
+queue.updateJob(job.id, {
+    stage: "Uploading",
+    progress: 95
+});
 
-    const uploaded = await retry(
-        () => uploader.upload(converted.output),
-        5,
-        3000
-    );
+console.log("Starting upload...");
 
-    if (!uploaded.success)
-        throw new Error("Upload Failed");
+const uploaded = await retry(async () => {
 
+    console.log("Upload attempt...");
+
+    return await uploader.upload(converted.output);
+
+}, 5, 3000);
+
+console.log("Upload completed.");
+
+if (!uploaded.success)
+    throw new Error("Upload Failed");
     // --------------------------------
     // CLEANUP
     // --------------------------------
