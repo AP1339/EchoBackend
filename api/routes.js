@@ -1,10 +1,12 @@
 const express = require("express");
+const path = require("path");
 
 const router = express.Router();
 
 const downloadController = require("./download.controller");
 const statusController = require("./status.controller");
 const healthController = require("./health.controller");
+const dashboardController = require("./dashboard.controller");
 
 const validateDownload = require("../middleware/validateDownload");
 
@@ -16,7 +18,7 @@ router.get("/", (req, res) => {
 
         name: "EchoBackend",
 
-        version: "1.1"
+        version: "1.2"
 
     });
 
@@ -35,5 +37,17 @@ router.post(
 );
 
 router.get("/job/:id", statusController.getJobStatus);
+
+router.get("/api/dashboard", dashboardController.getDashboard);
+
+router.get("/dashboard", (req, res) => {
+
+    res.sendFile(
+
+        path.join(__dirname, "..", "public", "index.html")
+
+    );
+
+});
 
 module.exports = router;

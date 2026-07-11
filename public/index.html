@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <title>EchoBackend Monitor</title>
+
+    <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+<div class="header">
+
+    <div>
+
+        <h1>EchoBackend</h1>
+
+        <p>Server Monitor</p>
+
+    </div>
+
+    <div id="status" class="status">
+        🟢 Running
+    </div>
+
+</div>
+
+<div class="grid">
+
+    <!-- SERVER -->
+
+    <div class="card">
+
+        <h2>🖥 Server</h2>
+
+        <div class="item"><span>Version</span><b id="version">-</b></div>
+
+        <div class="item"><span>Uptime</span><b id="uptime">-</b></div>
+
+        <div class="item"><span>Platform</span><b id="platform">-</b></div>
+
+        <div class="item"><span>Architecture</span><b id="architecture">-</b></div>
+
+        <div class="item"><span>Hostname</span><b id="hostname">-</b></div>
+
+        <div class="item"><span>Node</span><b id="node">-</b></div>
+
+    </div>
+
+    <!-- CPU -->
+
+    <div class="card">
+
+        <h2>⚡ CPU</h2>
+
+        <div class="item"><span>Usage</span><b id="cpuUsage">-</b></div>
+
+        <div class="item"><span>Model</span><b id="cpuModel">-</b></div>
+
+        <div class="item"><span>Cores</span><b id="cpuCores">-</b></div>
+
+        <div class="item"><span>Physical</span><b id="cpuPhysical">-</b></div>
+
+        <div class="item"><span>Speed</span><b id="cpuSpeed">-</b></div>
+
+    </div>
+
+    <!-- MEMORY -->
+
+    <div class="card">
+
+        <h2>🧠 Memory</h2>
+
+        <div class="item"><span>RAM Used</span><b id="ramUsed">-</b></div>
+
+        <div class="item"><span>RAM Free</span><b id="ramFree">-</b></div>
+
+        <div class="item"><span>RAM Total</span><b id="ramTotal">-</b></div>
+
+        <div class="item"><span>Process</span><b id="processRam">-</b></div>
+
+        <div class="item"><span>Heap Used</span><b id="heapUsed">-</b></div>
+
+        <div class="item"><span>Heap Total</span><b id="heapTotal">-</b></div>
+
+    </div>
+
+    <!-- STORAGE -->
+
+    <div class="card">
+
+        <h2>💾 Storage</h2>
+
+        <div class="item"><span>Disk Used</span><b id="diskUsed">-</b></div>
+
+        <div class="item"><span>Disk Free</span><b id="diskFree">-</b></div>
+
+        <div class="item"><span>Disk Total</span><b id="diskTotal">-</b></div>
+
+    </div>
+
+    <!-- NETWORK -->
+
+    <div class="card">
+
+        <h2>🌐 Network</h2>
+
+        <div class="item"><span>Local IP</span><b id="localIP">-</b></div>
+
+        <div class="item"><span>Supabase</span><b id="supabase">-</b></div>
+
+    </div>
+
+    <!-- BATTERY -->
+
+    <div class="card">
+
+        <h2>🔋 Battery</h2>
+
+        <div class="item"><span>Battery</span><b id="battery">-</b></div>
+
+        <div class="item"><span>Charging</span><b id="charging">-</b></div>
+
+    </div>
+
+    <!-- WORKERS -->
+
+    <div class="card">
+
+        <h2>👷 Workers</h2>
+
+        <div class="item"><span>Total</span><b id="workersTotal">-</b></div>
+
+        <div class="item"><span>Active</span><b id="workersActive">-</b></div>
+
+        <div class="item"><span>Idle</span><b id="workersIdle">-</b></div>
+
+    </div>
+
+    <!-- JOBS -->
+
+    <div class="card">
+
+        <h2>📦 Jobs</h2>
+
+        <div class="item"><span>Total</span><b id="jobsTotal">-</b></div>
+
+        <div class="item"><span>Queued</span><b id="jobsQueued">-</b></div>
+
+        <div class="item"><span>Processing</span><b id="jobsProcessing">-</b></div>
+
+        <div class="item"><span>Completed</span><b id="jobsCompleted">-</b></div>
+
+        <div class="item"><span>Failed</span><b id="jobsFailed">-</b></div>
+
+        <div class="item"><span>Downloads</span><b id="downloads">-</b></div>
+
+    </div>
+
+</div>
+
+<div class="card full">
+
+    <h2>🎵 Active Jobs</h2>
+
+    <table>
+
+        <thead>
+
+        <tr>
+
+            <th>ID</th>
+
+            <th>File</th>
+
+            <th>Status</th>
+
+            <th>Stage</th>
+
+            <th>Progress</th>
+
+        </tr>
+
+        </thead>
+
+        <tbody id="jobTable">
+
+        <tr>
+
+            <td colspan="5">
+
+                No Active Jobs
+
+            </td>
+
+        </tr>
+
+        </tbody>
+
+    </table>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+
+</html>
