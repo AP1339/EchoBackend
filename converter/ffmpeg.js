@@ -1,97 +1,92 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
-
 const config = require("../config/config");
 
 class FFmpegConverter {
-
     async convert(inputFile, metadata, quality = "320") {
-
         return new Promise((resolve, reject) => {
-
             const outputFolder = path.join(__dirname, "../downloads");
+            
+            if (!fs.existsSync(outputFolder)) {
+                fs.mkdirSync(outputFolder, { recursive: true });
+            }
 
-            if (!fs.existsSync(outputFolder))
-                fs.mkdirSync(outputFolder);
-
-            const safeName = metadata.title
+            // Sanitize filename
+            let baseName = metadata.title
                 .replace(/[<>:"/\\|?*]/g, "")
-                .trim();
+                .trim()
+                .substring(0, 200); // Limit length
 
+            // If empty, use timestamp
+            if (!baseName) {
+                baseName = `audio_${Date.now()}`;
+            }
+
+            // Add timestamp to prevent overwrites
+            const timestamp = Date.now();
             const outputFile = path.join(
-
-                outputFolder,
-
-                `${safeName}.mp3`
-
+                outputFolder, 
+                `${baseName}_${timestamp}.mp3`
             );
+
+            // Check if file already exists (add number suffix)
+            let finalOutput = outputFile;
+            let counter = 1;
+            while (fs.existsSync(finalOutput)) {
+                const ext = path.extname(outputFile);
+                const base = outputFile.replace(ext, '');
+                finalOutput = `${base}_${counter}${ext}`;
+                counter++;
+            }
+
+            console.log(`🎵 Converting: ${inputFile} -> ${finalOutput}`);
 
             const args = [
-
                 "-y",
-
-                "-i",
-                inputFile,
-
+                "-i", inputFile,
                 "-vn",
-
-                "-codec:a",
-                "libmp3lame",
-
-                "-b:a",
-                `${quality}k`,
-
-                "-metadata",
-                `title=${metadata.title}`,
-
-                "-metadata",
-                `artist=${metadata.artist}`,
-
-                "-metadata",
-                `album=${metadata.album}`,
-
-                outputFile
-
+                "-codec:a", "libmp3lame",
+                "-b:a", `${quality}k`,
+                "-metadata", `title=${metadata.title}`,
+                "-metadata", `artist=${metadata.artist}`,
+                "-metadata", `album=${metadata.album}`,
+                finalOutput
             ];
 
-            const ffmpeg = spawn(
+            const ffmpeg = spawn(config.FFMPEG_PATH, args);
 
-                config.FFMPEG_PATH,
-
-                args
-
-            );
-
-            ffmpeg.on("error", reject);
+            let stderr = "";
 
             ffmpeg.stderr.on("data", data => {
+                const text = data.toString();
+                stderr += text;
+                console.log(`🔊 ${text.trim()}`);
+            });
 
-                console.log(data.toString());
-
+            ffmpeg.on("error", (err) => {
+                reject(new Error(`FFmpeg error: ${err.message}`));
             });
 
             ffmpeg.on("close", code => {
+                if (code !== 0) {
+                    console.error("FFmpeg stderr:", stderr);
+                    return reject(new Error(`FFmpeg failed with code ${code}`));
+                }
 
-                if (code !== 0)
-                    return reject(
-                        new Error("FFmpeg failed")
-                    );
+                // Verify file exists
+                if (!fs.existsSync(finalOutput)) {
+                    return reject(new Error("Output file not created"));
+                }
 
+                console.log(`✅ Conversion complete: ${finalOutput}`);
                 resolve({
-
                     success: true,
-
-                    output: outputFile
-
+                    output: finalOutput
                 });
-
             });
-
         });
-
     }
-
 }
 
 module.exports = new FFmpegConverter();

@@ -1,58 +1,92 @@
+// api/server.js
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const compression = require("compression");
 const path = require("path");
 const { exec } = require("child_process");
-
 require("dotenv").config();
 
 const config = require("../config/config");
-const routes = require("./routes");
+const { validateEnv } = require("../config/validateEnv");
+const { logger, logRequest } = require("../logger/logger");
+const { authenticate } = require("../auth/middleware");
+const { baseLimiter, downloadLimiter, dashboardLimiter } = require("../auth/rateLimit");
+const { registerServer } = require("../middleware/gracefulShutdown");
 const errorHandler = require("../middleware/errorHandler");
+const routes = require("./routes");
+
+// Validate environment
+validateEnv();
 
 // Start Worker
-require("../worker/worker");
+try {
+    require("../worker/worker");
+    logger.info('✅ Worker started successfully');
+} catch (err) {
+    logger.error('❌ Worker failed to start:', err.message);
+}
 
 const app = express();
 
-app.use(cors());
+// Security
+app.use(helmet({
+    contentSecurityPolicy: false
+}));
+app.use(cors({
+    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(compression());
 
-app.use(express.json());
+// Logging
+app.use(logRequest);
 
-app.use(
+// Body parsing
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-    express.static(
+// Rate limiting
+app.use('/api/', baseLimiter);
+app.use('/api/download', downloadLimiter);
+app.use('/api/dashboard', dashboardLimiter);
 
-        path.join(__dirname, "..", "public")
+// Static files (public)
+app.use(express.static(path.join(__dirname, "..", "public")));
 
-    )
-
-);
-
+// Routes
 app.use("/", routes);
 
-// ALWAYS KEEP THIS LAST
+// Error handler (must be last)
 app.use(errorHandler);
 
-app.listen(config.PORT, "0.0.0.0", () => {
-
-    console.log("====================================");
-    console.log(" EchoBackend Started");
-    console.log("====================================");
-    console.log(`Server    : http://localhost:${config.PORT}`);
-    console.log(`Dashboard : http://localhost:${config.PORT}/dashboard`);
-    console.log("Worker    : Running");
-    console.log("====================================");
-
-    // Auto open dashboard (Windows only)
-
+// Start server
+const PORT = config.PORT || 3000;
+const server = app.listen(PORT, "0.0.0.0", () => {
+    logger.info(`🚀 EchoBackend started on port ${PORT}`);
+    logger.info(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
+    logger.info(`👷 Workers: ${config.WORKER_COUNT}`);
+    logger.info(`🌍 Environment: ${config.NODE_ENV}`);
+    
     if (process.platform === "win32") {
-
-        exec(
-
-            `start http://localhost:${config.PORT}/dashboard`
-
-        );
-
+        try {
+            exec(`start http://localhost:${PORT}/dashboard`);
+        } catch (err) {
+            logger.warn('Could not auto-open dashboard:', err.message);
+        }
     }
+});
 
+// Register for graceful shutdown
+registerServer(server);
+
+// Unhandled rejections
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    logger.error('Uncaught Exception:', error);
+    // Don't exit, let graceful shutdown handle it
 });
