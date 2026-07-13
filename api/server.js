@@ -8,7 +8,6 @@ const ytdlp = require('yt-dlp-exec');
 const fs = require('fs');
 const path = require('path');
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
@@ -21,8 +20,8 @@ app.use(cors({
     credentials: true
 }));
 app.use(compression());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Supabase setup
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -30,51 +29,73 @@ const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ============================================
-// CLEAN METADATA FUNCTION (removes special chars)
+// CLEAN URL FUNCTION
+// ============================================
+function cleanYouTubeUrl(url) {
+    if (!url) return '';
+    
+    // Remove backslashes
+    let cleanUrl = url.replace(/\\/g, '');
+    cleanUrl = cleanUrl.trim();
+    
+    try {
+        // Handle youtu.be URLs
+        if (cleanUrl.includes('youtu.be/')) {
+            const match = cleanUrl.match(/youtu\.be\/([^?&]+)/);
+            if (match) {
+                const videoId = match[1];
+                return `https://www.youtube.com/watch?v=${videoId}`;
+            }
+        }
+        
+        // Handle youtube.com URLs
+        if (cleanUrl.includes('youtube.com/watch')) {
+            const urlObj = new URL(cleanUrl);
+            const videoId = urlObj.searchParams.get('v');
+            if (videoId) {
+                return `https://www.youtube.com/watch?v=${videoId}`;
+            }
+        }
+    } catch (error) {
+        console.error('Error parsing URL:', error);
+    }
+    
+    return cleanUrl;
+}
+
+// ============================================
+// CLEAN METADATA FUNCTION
 // ============================================
 function cleanMetadata(text) {
     if (!text) return '';
-    
-    // Remove special characters, keep only letters, numbers, spaces, and basic punctuation
     let cleaned = text.replace(/[^\w\s\-.,!?()'"]/g, ' ');
-    
-    // Remove extra spaces
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
-    
     return cleaned;
 }
 
 // ============================================
-// SANITIZE FOR SUPABASE (removes ALL special chars)
+// SANITIZE FOR SUPABASE
 // ============================================
 function sanitizeForSupabase(text) {
     if (!text) return '';
-    
-    // Remove everything except letters, numbers, and spaces
     let sanitized = text.replace(/[^a-zA-Z0-9\s]/g, ' ');
-    
-    // Remove extra spaces
     sanitized = sanitized.replace(/\s+/g, ' ').trim();
-    
-    // Limit length
     sanitized = sanitized.substring(0, 100);
-    
     return sanitized || 'Unknown';
 }
 
 // ============================================
-// DOWNLOAD AUDIO FROM YOUTUBE
+// DOWNLOAD AUDIO
 // ============================================
 async function downloadAudio(url) {
     try {
-        const outputPath = path.join(__dirname, '../temp', `${Date.now()}.mp3`);
-        
-        // Ensure temp directory exists
-        if (!fs.existsSync(path.join(__dirname, '../temp'))) {
-            fs.mkdirSync(path.join(__dirname, '../temp'), { recursive: true });
+        const tempDir = path.join(__dirname, '../temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
         }
         
-        // Download audio
+        const outputPath = path.join(tempDir, `${Date.now()}.mp3`);
+        
         await ytdlp(url, {
             extractAudio: true,
             audioFormat: 'mp3',
@@ -83,10 +104,7 @@ async function downloadAudio(url) {
             noCheckCertificate: true,
         });
         
-        // Read the file
         const audioBuffer = fs.readFileSync(outputPath);
-        
-        // Clean up temp file
         fs.unlinkSync(outputPath);
         
         return audioBuffer;
@@ -101,24 +119,44 @@ async function downloadAudio(url) {
 // ============================================
 app.post('/api/download', async (req, res) => {
     try {
-        const { url } = req.body;
+        let { url, quality } = req.body;
         
         if (!url) {
-            return res.status(400).json({ error: 'URL is required' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'URL is required' 
+            });
         }
         
-        console.log('Downloading from URL:', url);
+        // Clean the URL
+        const cleanUrl = cleanYouTubeUrl(url);
+        console.log('📥 Original URL:', url);
+        console.log('📥 Cleaned URL:', cleanUrl);
         
-        // Get video info first
+        // Validate YouTube URL
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+        if (!youtubeRegex.test(cleanUrl)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid YouTube URL. Please provide a valid YouTube video URL.'
+            });
+        }
+        
+        console.log('🎵 Downloading from:', cleanUrl);
+        
+        // Get video info
         let videoInfo;
         try {
-            videoInfo = await ytdlp(url, {
+            videoInfo = await ytdlp(cleanUrl, {
                 dumpSingleJson: true,
                 noCheckCertificate: true,
             });
         } catch (error) {
             console.error('Error getting video info:', error);
-            return res.status(500).json({ error: 'Failed to get video information' });
+            return res.status(500).json({ 
+                success: false,
+                message: 'Failed to get video information' 
+            });
         }
         
         // Extract metadata
@@ -127,47 +165,36 @@ app.post('/api/download', async (req, res) => {
         const duration = videoInfo.duration || videoInfo.videoDetails?.lengthSeconds || 0;
         const thumbnail = videoInfo.thumbnail || videoInfo.videoDetails?.thumbnails?.[0]?.url || '';
         
-        console.log('Original Title:', title);
-        console.log('Original Artist:', artist);
+        console.log('📝 Title:', title);
+        console.log('👤 Artist:', artist);
         
-        // ============================================
-        // CREATE CLEAN METADATA FOR RESPONSE
-        // ============================================
+        // Clean metadata
         const cleanTitle = cleanMetadata(title);
         const cleanArtist = cleanMetadata(artist);
         
-        // ============================================
-        // CREATE SANITIZED METADATA FOR SUPABASE
-        // (removes all special chars including Marathi)
-        // ============================================
+        // Sanitize for Supabase
         const supabaseTitle = sanitizeForSupabase(title);
         const supabaseArtist = sanitizeForSupabase(artist);
         
-        console.log('Clean Title (for response):', cleanTitle);
-        console.log('Clean Artist (for response):', cleanArtist);
-        console.log('Supabase Title (sanitized):', supabaseTitle);
-        console.log('Supabase Artist (sanitized):', supabaseArtist);
-        
-        // ============================================
-        // DOWNLOAD THE AUDIO
-        // ============================================
+        // Download audio
         let audioBuffer;
         try {
-            audioBuffer = await downloadAudio(url);
+            audioBuffer = await downloadAudio(cleanUrl);
         } catch (error) {
             console.error('Error downloading audio:', error);
-            return res.status(500).json({ error: 'Failed to download audio' });
+            return res.status(500).json({ 
+                success: false,
+                message: 'Failed to download audio' 
+            });
         }
         
-        // ============================================
-        // UPLOAD TO SUPABASE
-        // ============================================
-        let supabaseResult;
+        // Upload to Supabase
+        let supabaseResult = { uploaded: false };
         try {
             const fileName = `${Date.now()}_${supabaseTitle.substring(0, 30)}.mp3`;
             
             supabaseResult = await supabase.storage
-                .from('audio') // Make sure this bucket exists
+                .from('audio')
                 .upload(`songs/${fileName}`, audioBuffer, {
                     contentType: 'audio/mpeg',
                     cacheControl: '3600',
@@ -176,23 +203,16 @@ app.post('/api/download', async (req, res) => {
                         title: supabaseTitle,
                         artist: supabaseArtist,
                         duration: String(duration),
-                        original_title: title,
-                        original_artist: artist
+                        quality: quality || '320'
                     }
                 });
             
-            if (supabaseResult.error) {
-                console.error('Supabase upload error:', supabaseResult.error);
-                // Continue anyway - we'll still send the audio back
-            }
+            console.log('☁️ Supabase upload:', supabaseResult.error ? 'failed' : 'success');
         } catch (error) {
             console.error('Supabase upload error:', error);
-            // Don't fail the whole request if supabase fails
         }
         
-        // ============================================
-        // SEND RESPONSE TO APP
-        // ============================================
+        // Send response
         const responseData = {
             success: true,
             metadata: {
@@ -200,37 +220,37 @@ app.post('/api/download', async (req, res) => {
                 artist: cleanArtist || 'Unknown Artist',
                 duration: duration,
                 thumbnail: thumbnail,
-                // Send original too if app wants to display it
                 originalTitle: title,
                 originalArtist: artist
             },
-            audioData: audioBuffer.toString('base64'), // Send as base64
+            audioData: audioBuffer.toString('base64'),
             supabase: {
-                uploaded: !supabaseResult?.error,
-                fileId: supabaseResult?.data?.id || null,
-                path: supabaseResult?.data?.path || null
+                uploaded: !supabaseResult.error,
+                fileId: supabaseResult.data?.id || null,
+                path: supabaseResult.data?.path || null
             }
         };
         
-        console.log('Sending response to app...');
+        console.log('✅ Sending response to app');
         res.json(responseData);
         
     } catch (error) {
-        console.error('Server error:', error);
+        console.error('❌ Server error:', error);
         res.status(500).json({ 
-            error: 'Internal server error',
+            success: false,
+            message: 'Internal server error',
             details: error.message 
         });
     }
 });
 
 // ============================================
-// HEALTH CHECK ENDPOINT
+// HEALTH CHECK
 // ============================================
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'ok', 
-        message: 'EchoBackend is running on mobile!',
+        message: 'EchoBackend is running!',
         timestamp: new Date().toISOString()
     });
 });
@@ -242,14 +262,12 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 EchoBackend running on port ${PORT}`);
     console.log(`📍 Local: http://localhost:${PORT}`);
     console.log(`📱 Mobile: http://127.0.0.1:${PORT}`);
-    console.log('✅ Ready to download YouTube audio!');
 });
 
-// Handle errors
 process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
+    console.error('💥 Uncaught Exception:', error);
 });
 
 process.on('unhandledRejection', (error) => {
-    console.error('Unhandled Rejection:', error);
+    console.error('💥 Unhandled Rejection:', error);
 });
